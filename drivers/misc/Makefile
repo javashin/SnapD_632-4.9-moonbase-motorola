@@ -69,6 +69,8 @@ obj-$(CONFIG_SARSENSOR_SX9310) += sx931x_triple.o
 EXTRA_CFLAGS += -DCONFIG_CAPSENSE_USB_CAL
 EXTRA_CFLAGS += -Idrivers/base
 
+
+
 obj-$(CONFIG_UID_SYS_STATS)	+= uid_sys_stats.o
 obj-$(CONFIG_MEMORY_STATE_TIME)	+= memory_state_time.o
 obj-$(CONFIG_QCOM_XR_SMRTVWR_MISC) += qcom-xr-smrtvwr-misc.o
@@ -93,5 +95,9 @@ OBJCOPYFLAGS_lkdtm_rodata_objcopy.o := \
 targets += lkdtm_rodata.o lkdtm_rodata_objcopy.o
 $(obj)/lkdtm_rodata_objcopy.o: $(obj)/lkdtm_rodata.o FORCE
 	$(call if_changed,objcopy)
+
 obj-$(CONFIG_OKL4_LINK_SHBUF)    += okl4-link-shbuf.o
 obj-$(CONFIG_DROPBOX) += dropbox.o
+
+obj-$(CONFIG_FORCE_FAST_CHARGE) += fastchg.o
+

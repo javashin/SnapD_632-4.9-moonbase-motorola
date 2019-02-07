@@ -865,6 +865,7 @@ config QPNP_MISC
 	  and the driver provides an API to check if this interrupt
 	  is available on the current PMIC chip.
 
+
 config DROPBOX
 	tristate "Dropbox sysfs support"
 	default y
@@ -895,6 +896,12 @@ config SARSENSOR_SX9310
 	help
 	  Say Y here if you have a sar sensor SX9310 connected
 	  to your system.If unsure, say N.
+
+config FORCE_FAST_CHARGE
+	bool "Force faster charge rate for USB"
+	default n
+	help
+	  This allows users to override default charge rate for USB
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/awinic/Kconfig"

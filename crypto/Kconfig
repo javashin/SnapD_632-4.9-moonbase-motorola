@@ -102,6 +102,15 @@ config CRYPTO_KPP
 	select CRYPTO_ALGAPI
 	select CRYPTO_KPP2
 
+config CRYPTO_ACOMP
+	tristate
+	select CRYPTO_ACOMP2
+	select CRYPTO_ALGAPI
+
+config CRYPTO_ACOMP2
+	tristate
+	select CRYPTO_ALGAPI2
+
 config CRYPTO_RSA
 	tristate "RSA algorithm"
 	select CRYPTO_AKCIPHER
@@ -137,6 +146,7 @@ config CRYPTO_MANAGER2
 	select CRYPTO_HASH2
 	select CRYPTO_BLKCIPHER2
 	select CRYPTO_AKCIPHER2
+    select CRYPTO_ACOMP2
 	select CRYPTO_KPP2
 
 config CRYPTO_USER
@@ -1627,6 +1637,7 @@ config CRYPTO_DEFLATE
 config CRYPTO_LZO
 	tristate "LZO compression algorithm"
 	select CRYPTO_ALGAPI
+	select CRYPTO_ACOMP2
 	select LZO_COMPRESS
 	select LZO_DECOMPRESS
 	help

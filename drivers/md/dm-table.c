@@ -11,6 +11,7 @@
 #include <linux/vmalloc.h>
 #include <linux/blkdev.h>
 #include <linux/namei.h>
+#include <linux/mount.h>
 #include <linux/ctype.h>
 #include <linux/string.h>
 #include <linux/slab.h>
@@ -510,14 +511,14 @@ static int adjoin(struct dm_table *table, struct dm_target *ti)
  * On the other hand, dm-switch needs to process bulk data using messages and
  * excessive use of GFP_NOIO could cause trouble.
  */
-static char **realloc_argv(unsigned *array_size, char **old_argv)
+static char **realloc_argv(unsigned *size, char **old_argv)
 {
 	char **argv;
 	unsigned new_size;
 	gfp_t gfp;
 
-	if (*array_size) {
-		new_size = *array_size * 2;
+	if (*size) {
+		new_size = *size * 2;
 		gfp = GFP_KERNEL;
 	} else {
 		new_size = 8;
@@ -525,8 +526,8 @@ static char **realloc_argv(unsigned *array_size, char **old_argv)
 	}
 	argv = kmalloc(new_size * sizeof(*argv), gfp);
 	if (argv) {
-		memcpy(argv, old_argv, *array_size * sizeof(*argv));
-		*array_size = new_size;
+		memcpy(argv, old_argv, *size * sizeof(*argv));
+		*size = new_size;
 	}
 
 	kfree(old_argv);
@@ -1497,6 +1498,16 @@ static int queue_supports_sg_merge(struct dm_target *ti, struct dm_dev *dev,
 	return q && !test_bit(QUEUE_FLAG_NO_SG_MERGE, &q->queue_flags);
 }
 
+static int queue_supports_inline_encryption(struct dm_target *ti,
+					    struct dm_dev *dev,
+					    sector_t start, sector_t len,
+					    void *data)
+{
+	struct request_queue *q = bdev_get_queue(dev->bdev);
+
+	return q && blk_queue_inlinecrypt(q);
+}
+
 static bool dm_table_all_devices_attribute(struct dm_table *t,
 					   iterate_devices_callout_fn func)
 {
@@ -1616,6 +1627,11 @@ void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
 		queue_flag_clear_unlocked(QUEUE_FLAG_NO_SG_MERGE, q);
 	else
 		queue_flag_set_unlocked(QUEUE_FLAG_NO_SG_MERGE, q);
+
+	if (dm_table_all_devices_attribute(t, queue_supports_inline_encryption))
+		queue_flag_set_unlocked(QUEUE_FLAG_INLINECRYPT, q);
+	else
+		queue_flag_clear_unlocked(QUEUE_FLAG_INLINECRYPT, q);
 
 	dm_table_verify_integrity(t);
 
@@ -1758,7 +1774,7 @@ int dm_table_any_congested(struct dm_table *t, int bdi_bits)
 		char b[BDEVNAME_SIZE];
 
 		if (likely(q))
-			r |= bdi_congested(&q->backing_dev_info, bdi_bits);
+			r |= bdi_congested(q->backing_dev_info, bdi_bits);
 		else
 			DMWARN_LIMIT("%s: any_congested: nonexistent device %s",
 				     dm_device_name(t->md),

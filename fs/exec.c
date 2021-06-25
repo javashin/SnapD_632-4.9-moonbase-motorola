@@ -306,7 +306,7 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 	vma->vm_start = vma->vm_end - PAGE_SIZE;
 	vma->vm_flags = VM_SOFTDIRTY | VM_STACK_FLAGS | VM_STACK_INCOMPLETE_SETUP;
 	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
-	INIT_LIST_HEAD(&vma->anon_vma_chain);
+	INIT_VMA(vma);
 
 	err = insert_vm_struct(mm, vma);
 	if (err)
@@ -1165,6 +1165,18 @@ static int de_thread(struct task_struct *tsk)
 		leader->group_leader = tsk;
 
 		tsk->exit_signal = SIGCHLD;
+#ifdef CONFIG_ANDROID_LMK_ADJ_RBTREE
+		/*
+         * need to delete leader from adj tree, because it will not be
+         * group leader (exit_signal = -1) soon. release_task(leader)
+         * can't delete it.
+         */
+        spin_lock_irq(lock);
+        delete_from_adj_tree(leader);
+        add_2_adj_tree(tsk);
+        spin_unlock_irq(lock);
+#endif
+
 		leader->exit_signal = -1;
 
 		BUG_ON(leader->exit_state != EXIT_ZOMBIE);
@@ -1303,7 +1315,7 @@ EXPORT_SYMBOL(flush_old_exec);
 void would_dump(struct linux_binprm *bprm, struct file *file)
 {
 	struct inode *inode = file_inode(file);
-	if (inode_permission(inode, MAY_READ) < 0) {
+	if (inode_permission2(file->f_path.mnt, inode, MAY_READ) < 0) {
 		struct user_namespace *old, *user_ns;
 		bprm->interp_flags |= BINPRM_FLAGS_ENFORCE_NONDUMP;
 

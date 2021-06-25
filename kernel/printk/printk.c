@@ -56,6 +56,10 @@
 #include "braille.h"
 #include "internal.h"
 
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+extern void printascii(char *);
+#endif
+
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
@@ -338,6 +342,7 @@ struct printk_log {
 	u8 facility;		/* syslog facility */
 	u8 flags:5;		/* internal record flags */
 	u8 level:3;		/* syslog level */
+	u8 cpu;			/* which cpu that print the message*/
 }
 #ifdef CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
 __packed __aligned(4)
@@ -375,7 +380,7 @@ static u64 clear_seq;
 static u32 clear_idx;
 
 #define PREFIX_MAX		32
-#define LOG_LINE_MAX		(1024 - PREFIX_MAX)
+#define LOG_LINE_MAX		(2048 - PREFIX_MAX)
 
 #define LOG_LEVEL(v)		((v) & 0x07)
 #define LOG_FACILITY(v)		((v) >> 3 & 0xff)
@@ -532,7 +537,7 @@ static u32 truncate_msg(u16 *text_len, u16 *trunc_msg_len,
 static int log_store(int facility, int level,
 		     enum log_flags flags, u64 ts_nsec,
 		     const char *dict, u16 dict_len,
-		     const char *text, u16 text_len)
+		     const char *text, u16 text_len, u32 cpu)
 {
 	struct printk_log *msg;
 	u32 size, pad_len;
@@ -579,6 +584,7 @@ static int log_store(int facility, int level,
 		msg->ts_nsec = local_clock();
 	memset(log_dict(msg) + dict_len, 0, pad_len);
 	msg->len = size;
+	msg->cpu = (u8)cpu;
 
 	/* insert message */
 	log_next_idx += msg->len;
@@ -1166,7 +1172,7 @@ static inline void boot_delay_msec(int level)
 static bool printk_time = IS_ENABLED(CONFIG_PRINTK_TIME);
 module_param_named(time, printk_time, bool, S_IRUGO | S_IWUSR);
 
-static size_t print_time(u64 ts, char *buf)
+static size_t print_time(u64 ts, char *buf, u8 cpu)
 {
 	unsigned long rem_nsec;
 
@@ -1176,10 +1182,11 @@ static size_t print_time(u64 ts, char *buf)
 	rem_nsec = do_div(ts, 1000000000);
 
 	if (!buf)
-		return snprintf(NULL, 0, "[%5lu.000000] ", (unsigned long)ts);
+		return snprintf(NULL, 0, "[%5lu.000000,%u] ",
+			(unsigned long)ts, cpu);
 
-	return sprintf(buf, "[%5lu.%06lu] ",
-		       (unsigned long)ts, rem_nsec / 1000);
+	return sprintf(buf, "[%5lu.%06lu,%u] ",
+			(unsigned long)ts, rem_nsec / 1000, cpu);
 }
 
 static size_t print_prefix(const struct printk_log *msg, bool syslog, char *buf)
@@ -1201,7 +1208,8 @@ static size_t print_prefix(const struct printk_log *msg, bool syslog, char *buf)
 		}
 	}
 
-	len += print_time(msg->ts_nsec, buf ? buf + len : NULL);
+	len += print_time(msg->ts_nsec, buf ? buf + len : NULL,
+				msg->cpu);
 	return len;
 }
 
@@ -1601,14 +1609,21 @@ static struct cont {
 	u8 facility;			/* log facility of first message */
 	enum log_flags flags;		/* prefix, newline flags */
 	bool flushed:1;			/* buffer sealed and committed */
+	u8 cpu;				/* which cpu is using the cont*/
 } cont;
 
 static void cont_flush(void)
 {
+	u32 this_cpu;
+
 	if (cont.flushed)
 		return;
 	if (cont.len == 0)
 		return;
+
+	this_cpu = smp_processor_id();
+	cont.cpu = (u8)this_cpu;
+
 	if (cont.cons) {
 		/*
 		 * If a fragment of this line was directly flushed to the
@@ -1616,7 +1631,7 @@ static void cont_flush(void)
 		 * line. LOG_NOCONS suppresses a duplicated output.
 		 */
 		log_store(cont.facility, cont.level, cont.flags | LOG_NOCONS,
-			  cont.ts_nsec, NULL, 0, cont.buf, cont.len);
+			  cont.ts_nsec, NULL, 0, cont.buf, cont.len, this_cpu);
 		cont.flushed = true;
 	} else {
 		/*
@@ -1624,7 +1639,7 @@ static void cont_flush(void)
 		 * just submit it to the store and free the buffer.
 		 */
 		log_store(cont.facility, cont.level, cont.flags, 0,
-			  NULL, 0, cont.buf, cont.len);
+			  NULL, 0, cont.buf, cont.len, this_cpu);
 		cont.len = 0;
 	}
 }
@@ -1676,7 +1691,7 @@ static size_t cont_print_text(char *text, size_t size)
 	size_t len;
 
 	if (cont.cons == 0) {
-		textlen += print_time(cont.ts_nsec, text);
+		textlen += print_time(cont.ts_nsec, text, cont.cpu);
 		size -= textlen;
 	}
 
@@ -1698,7 +1713,7 @@ static size_t cont_print_text(char *text, size_t size)
 	return textlen;
 }
 
-static size_t log_output(int facility, int level, enum log_flags lflags, const char *dict, size_t dictlen, char *text, size_t text_len)
+static size_t log_output(int facility, int level, enum log_flags lflags, const char *dict, size_t dictlen, char *text, size_t text_len, u8 cpu)
 {
 	/*
 	 * If an earlier line was buffered, and we're a continuation
@@ -1724,7 +1739,7 @@ static size_t log_output(int facility, int level, enum log_flags lflags, const c
 	}
 
 	/* Store it in the record log */
-	return log_store(facility, level, lflags, 0, dict, dictlen, text, text_len);
+	return log_store(facility, level, lflags, 0, dict, dictlen, text, text_len, cpu);
 }
 
 asmlinkage int vprintk_emit(int facility, int level,
@@ -1787,7 +1802,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 		/* emit KERN_CRIT message */
 		printed_len += log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
 					 NULL, 0, recursion_msg,
-					 strlen(recursion_msg));
+					 strlen(recursion_msg), this_cpu);
 	}
 
 	nmi_message_lost = get_nmi_message_lost();
@@ -1796,7 +1811,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 				     "BAD LUCK: lost %d message(s) from NMI context!",
 				     nmi_message_lost);
 		printed_len += log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
-					 NULL, 0, textbuf, text_len);
+					 NULL, 0, textbuf, text_len, this_cpu);
 	}
 
 	/*
@@ -1833,13 +1848,17 @@ asmlinkage int vprintk_emit(int facility, int level,
 		}
 	}
 
+#ifdef CONFIG_EARLY_PRINTK_DIRECT
+	printascii(text);
+#endif
+
 	if (level == LOGLEVEL_DEFAULT)
 		level = default_message_loglevel;
 
 	if (dict)
 		lflags |= LOG_PREFIX|LOG_NEWLINE;
 
-	printed_len += log_output(facility, level, lflags, dict, dictlen, text, text_len);
+	printed_len += log_output(facility, level, lflags, dict, dictlen, text, text_len, this_cpu);
 
 	logbuf_cpu = UINT_MAX;
 	raw_spin_unlock(&logbuf_lock);
@@ -2125,6 +2144,8 @@ void resume_console(void)
 	console_unlock();
 }
 
+#ifdef CONFIG_CONSOLE_FLUSH_ON_HOTPLUG
+
 /**
  * console_cpu_notify - print deferred console messages after CPU hotplug
  * @self: notifier struct
@@ -2149,6 +2170,8 @@ static int console_cpu_notify(struct notifier_block *self,
 	}
 	return NOTIFY_OK;
 }
+
+#endif
 
 /**
  * console_lock - lock the console system for exclusive use.
@@ -2798,7 +2821,9 @@ static int __init printk_late_init(void)
 				unregister_console(con);
 		}
 	}
+#ifdef CONFIG_CONSOLE_FLUSH_ON_HOTPLUG
 	hotcpu_notifier(console_cpu_notify, 0);
+#endif
 	return 0;
 }
 late_initcall(printk_late_init);

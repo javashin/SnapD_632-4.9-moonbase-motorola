@@ -167,8 +167,9 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 		harden_branch_predictor();
 
 #ifdef CONFIG_DEBUG_USER
-	if (((user_debug & UDBG_SEGV) && (sig == SIGSEGV)) ||
-	    ((user_debug & UDBG_BUS)  && (sig == SIGBUS))) {
+	if (unhandled_signal(tsk, sig) &&
+		(((user_debug & UDBG_SEGV) && (sig == SIGSEGV)) ||
+		((user_debug & UDBG_BUS)  && (sig == SIGBUS)))) {
 		printk(KERN_DEBUG "%s: unhandled page fault (%d) at 0x%08lx, code 0x%03x\n",
 		       tsk->comm, sig, addr, fsr);
 		show_pte(tsk->mm, addr);
@@ -276,10 +277,10 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		local_irq_enable();
 
 	/*
-	 * If we're in an interrupt or have no user
+	 * If we're in an interrupt, or have no irqs, or have no user
 	 * context, we must not take the fault..
 	 */
-	if (faulthandler_disabled() || !mm)
+	if (faulthandler_disabled() || irqs_disabled() || !mm)
 		goto no_context;
 
 	if (user_mode(regs))

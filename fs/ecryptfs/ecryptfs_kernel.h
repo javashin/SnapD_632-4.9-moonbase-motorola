@@ -125,7 +125,7 @@ ecryptfs_get_key_payload_data(struct key *key)
 	if (auth_tok)
 		return auth_tok;
 
-	ukp = user_key_payload(key);
+	ukp = user_key_payload_locked(key);
 	if (!ukp)
 		return ERR_PTR(-EKEYREVOKED);
 
@@ -343,6 +343,7 @@ struct ecryptfs_mount_crypt_stat {
 #define ECRYPTFS_GLOBAL_ENCFN_USE_MOUNT_FNEK   0x00000020
 #define ECRYPTFS_GLOBAL_ENCFN_USE_FEK          0x00000040
 #define ECRYPTFS_GLOBAL_MOUNT_AUTH_TOK_ONLY    0x00000080
+#define ECRYPTFS_NO_NEW_ENCRYPTED	       0x00000100
 	u32 flags;
 	struct list_head global_auth_tok_list;
 	struct mutex global_auth_tok_list_mutex;

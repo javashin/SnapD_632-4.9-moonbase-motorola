@@ -1,0 +1,50 @@
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/msm-clocks-8953.h>
+
+#include "sdm632-channel-common-overlay.dtsi"
+
+/ {
+	model = "channel";
+	qcom,msm-id = <349 0x0>;
+	qcom,board-id = <0x4A 0xCC00>;
+};
+
+/*
+ * Channel RoW HW rev PVTC specific changes go here
+ */
+
+&i2c_2 { /* capsensor */
+
+        sx9310@28 {
+                compatible = "semtech,sx9310";
+                reg = <0x28>;
+                cap_vdd-supply = <&pm8953_l22>;
+                cap_svdd-supply = <&pm8953_l5>;
+                interrupt-parent = <&tlmm>;
+                interrupts = <86 0x2008>;
+                gpios = <&tlmm 86 0x2008>;
+                pinctrl-names = "default";
+                pinctrl-0 = <&sx9310_irq_default>;
+                cap,use_channel = <0x0f>;
+                cap,use_channel_top = <0x01>;
+                cap,use_channel_bottom = <0x02>;
+                cap,raw_data_channel = <0x01>;
+                cap,scan_period = <0x02>;
+                reg_array_len = <12>;
+                reg_array_val = <0x13 0x0a 0x14 0x0f 0x15 0x43 0x16 0x7f 0x17 0x4b 0x18 0x59 0x19 0x59 0x1a 0x15 0x21 0x18 0x22 0x23 0x23 0x05 0x2a 0x01>;
+        };
+};

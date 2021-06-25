@@ -2099,6 +2099,8 @@ void __weak module_arch_freeing_init(struct module *mod)
 {
 }
 
+static void cfi_cleanup(struct module *mod);
+
 /* Free a module, remove from lists, etc. */
 static void free_module(struct module *mod)
 {
@@ -2140,6 +2142,10 @@ static void free_module(struct module *mod)
 
 	/* This may be empty, but that's OK */
 	disable_ro_nx(&mod->init_layout);
+
+	/* Clean up CFI for the module. */
+	cfi_cleanup(mod);
+
 	module_arch_freeing_init(mod);
 	module_memfree(mod->init_layout.base);
 	kfree(mod->args);
@@ -2150,6 +2156,11 @@ static void free_module(struct module *mod)
 
 	/* Finally, free the core (containing the module structure) */
 	disable_ro_nx(&mod->core_layout);
+#ifdef CONFIG_DEBUG_MODULE_LOAD_INFO
+	pr_info("Unloaded %s: module core layout address range: 0x%lx-0x%lx\n",
+		mod->name, (long)mod->core_layout.base,
+		(long)(mod->core_layout.base + mod->core_layout.size - 1));
+#endif
 	module_memfree(mod->core_layout.base);
 
 #ifdef CONFIG_MPU
@@ -3321,6 +3332,8 @@ int __weak module_finalize(const Elf_Ehdr *hdr,
 	return 0;
 }
 
+static void cfi_init(struct module *mod);
+
 static int post_relocation(struct module *mod, const struct load_info *info)
 {
 	/* Sort exception table now relocations are done. */
@@ -3332,6 +3345,9 @@ static int post_relocation(struct module *mod, const struct load_info *info)
 
 	/* Setup kallsyms-specific fields. */
 	add_kallsyms(mod, info);
+
+	/* Setup CFI for the module. */
+	cfi_init(mod);
 
 	/* Arch-specific module finalizing. */
 	return module_finalize(info->hdr, info->sechdrs, mod);
@@ -3381,6 +3397,58 @@ static void do_free_init(struct rcu_head *head)
 	kfree(m);
 }
 
+
+#ifdef CONFIG_MODULE_EXTRA_COPY
+/* Make an extra copy of the module. */
+static int make_extra_copy(Elf_Ehdr *elf_hdr, unsigned long elf_len,
+			   void **extra_copy)
+{
+	void *dest = *extra_copy = vmalloc(elf_len);
+
+	if (dest == NULL)
+		return -ENOMEM;
+	memcpy(dest, elf_hdr, elf_len);
+	return 0;
+}
+
+/*
+ * Keep the linked copy as well as the raw copy, in case the
+ * module wants to inspect both.
+ */
+static int keep_extra_copy_info(struct module *mod, void *extra_copy,
+				Elf_Ehdr *elf_hdr, unsigned long elf_len)
+{
+	mod->raw_binary_ptr = extra_copy;
+	mod->raw_binary_size = elf_len;
+	mod->linked_binary_ptr = elf_hdr;
+	mod->linked_binary_size = elf_len;
+	return 1;
+}
+
+/* Release module extra copy information. */
+static void cleanup_extra_copy_info(struct module *mod)
+{
+	vfree(mod->raw_binary_ptr);
+	vfree(mod->linked_binary_ptr);
+	mod->raw_binary_ptr = mod->linked_binary_ptr = NULL;
+	mod->raw_binary_size = mod->linked_binary_size = 0;
+}
+#else/* !CONFIG_MODULE_EXTRA_COPY */
+static inline int make_extra_copy(Elf_Ehdr *elf_hdr, unsigned long elf_len,
+				  void **extra_copy)
+{
+	*extra_copy = NULL;
+	return 0;
+}
+static inline int keep_extra_copy_info(struct module *mod, void *extra_copy,
+				       Elf_Ehdr *elf_hdr,
+				       unsigned long elf_len)
+{
+	return 0;
+}
+static inline void cleanup_extra_copy_info(struct module *mod) { }
+#endif/* CONFIG_MODULE_EXTRA_COPY */
+
 /*
  * This is where the real work happens.
  *
@@ -3409,6 +3477,7 @@ static noinline int do_init_module(struct module *mod)
 	/* Start the module */
 	if (mod->init != NULL)
 		ret = do_one_initcall(mod->init);
+	cleanup_extra_copy_info(mod);
 	if (ret < 0) {
 		goto fail_free_freeinit;
 	}
@@ -3457,6 +3526,14 @@ static noinline int do_init_module(struct module *mod)
 	mod_tree_remove_init(mod);
 	disable_ro_nx(&mod->init_layout);
 	module_arch_freeing_init(mod);
+#ifdef CONFIG_DEBUG_MODULE_LOAD_INFO
+	pr_info("Loaded %s: module init layout addresses range: 0x%lx-0x%lx\n",
+		mod->name, (long)mod->init_layout.base,
+		(long)(mod->init_layout.base + mod->init_layout.size - 1));
+	pr_info("%s: core layout addresses range: 0x%lx-0x%lx\n", mod->name,
+		(long)mod->core_layout.base,
+		(long)(mod->core_layout.base + mod->core_layout.size - 1));
+#endif
 	mod->init_layout.base = NULL;
 	mod->init_layout.size = 0;
 	mod->init_layout.ro_size = 0;
@@ -3606,6 +3683,7 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	struct module *mod;
 	long err;
 	char *after_dashes;
+	void *extra_copy = NULL;
 
 	err = module_sig_check(info, flags);
 	if (err)
@@ -3615,11 +3693,16 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	if (err)
 		goto free_copy;
 
+	/* Make extra copy of the module, if needed. */
+	err = make_extra_copy(info->hdr, info->len, &extra_copy);
+	if (err)
+		goto free_copy;
+
 	/* Figure out module layout, and allocate all the memory. */
 	mod = layout_and_allocate(info, flags);
 	if (IS_ERR(mod)) {
 		err = PTR_ERR(mod);
-		goto free_copy;
+		goto free_extra_copy;
 	}
 
 	/* Reserve our place in the list. */
@@ -3721,8 +3804,11 @@ static int load_module(struct load_info *info, const char __user *uargs,
 			goto sysfs_cleanup;
 	}
 
-	/* Get rid of temporary copy. */
-	free_copy(info);
+	/* Keep extra copy information, if needed. */
+	if (!keep_extra_copy_info(mod, extra_copy, info->hdr, info->len)) {
+		/* Get rid of temporary copy. */
+		free_copy(info);
+	}
 
 	/* Done! */
 	trace_module_load(mod);
@@ -3775,6 +3861,8 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	lockdep_free_key_range(mod->core_layout.base, mod->core_layout.size);
 
 	module_deallocate(mod, info);
+ free_extra_copy:
+	vfree(extra_copy);
  free_copy:
 	free_copy(info);
 	return err;
@@ -4068,6 +4156,22 @@ int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 	return 0;
 }
 #endif /* CONFIG_KALLSYMS */
+
+static void cfi_init(struct module *mod)
+{
+#ifdef CONFIG_CFI_CLANG
+	mod->cfi_check =
+		(cfi_check_fn)mod_find_symname(mod, CFI_CHECK_FN_NAME);
+	cfi_module_add(mod, module_addr_min, module_addr_max);
+#endif
+}
+
+static void cfi_cleanup(struct module *mod)
+{
+#ifdef CONFIG_CFI_CLANG
+	cfi_module_remove(mod, module_addr_min, module_addr_max);
+#endif
+}
 
 static char *module_flags(struct module *mod, char *buf)
 {

@@ -45,6 +45,7 @@
 
 #include <trace/events/task.h>
 #include "internal.h"
+#include "coredump_gz.h"
 
 #include <trace/events/sched.h>
 
@@ -293,6 +294,8 @@ static int format_corename(struct core_name *cn, struct coredump_params *cprm)
 	}
 
 out:
+	check_for_gz(ispipe, core_pattern, cprm);
+
 	/* Backward compatibility with core_uses_pid:
 	 *
 	 * If core_pattern does not include a %p (as is the default)
@@ -533,6 +536,45 @@ static int umh_pipe_setup(struct subprocess_info *info, struct cred *new)
 	return err;
 }
 
+#ifdef CONFIG_COREDUMP_PERMISSION_HACK
+static void adjust_permissions(struct cred *cred, bool *need_nonrelative)
+{
+	cred->uid = GLOBAL_ROOT_UID;
+	cred->fsuid = GLOBAL_ROOT_UID;
+
+	cap_raise(cred->cap_effective, CAP_SYS_ADMIN);
+	cap_raise(cred->cap_effective, CAP_DAC_OVERRIDE);
+	cap_raise(cred->cap_effective, CAP_FOWNER);
+
+#if defined(CONFIG_SECURITY_SELINUX)
+#define COREDUMP_SECCTX "u:r:coredump:s0"
+	{
+		/* HACK -- selinux hides all of this stuff */
+		struct task_security_struct {
+			u32 osid;		/* SID prior to last execve */
+			u32 sid;		/* current SID */
+			u32 exec_sid;		/* exec SID */
+			u32 create_sid;		/* fscreate SID */
+			u32 keycreate_sid;	/* keycreate SID */
+			u32 sockcreate_sid;	/* fscreate SID */
+		};
+		u32 coredump_secid;
+		struct task_security_struct *tsec = cred->security;
+
+		security_secctx_to_secid(COREDUMP_SECCTX,
+				strlen(COREDUMP_SECCTX), &coredump_secid);
+		if (coredump_secid)
+			tsec->sid = coredump_secid;
+	}
+#undef COREDUMP_SECCTX
+#endif
+
+	*need_nonrelative = true;
+}
+#else
+static inline void adjust_permissions(struct cred *cred, bool *need_nonrelative) {}
+#endif
+
 void do_coredump(const siginfo_t *siginfo)
 {
 	struct core_state core_state;
@@ -587,9 +629,12 @@ void do_coredump(const siginfo_t *siginfo)
 	if (retval < 0)
 		goto fail_creds;
 
-	old_cred = override_creds(cred);
-
 	ispipe = format_corename(&cn, &cprm);
+
+	if (!ispipe)
+		adjust_permissions(cred, &need_suid_safe);
+
+	old_cred = override_creds(cred);
 
 	if (ispipe) {
 		int dump_count;
@@ -733,18 +778,14 @@ void do_coredump(const siginfo_t *siginfo)
 		if (!S_ISREG(inode->i_mode))
 			goto close_fail;
 		/*
-		 * Don't dump core if the filesystem changed owner or mode
-		 * of the file during file creation. This is an issue when
-		 * a process dumps core while its cwd is e.g. on a vfat
-		 * filesystem.
+		 * Dont allow local users get cute and trick others to coredump
+		 * into their pre-created files.
 		 */
 		if (!uid_eq(inode->i_uid, current_fsuid()))
 			goto close_fail;
-		if ((inode->i_mode & 0677) != 0600)
-			goto close_fail;
 		if (!(cprm.file->f_mode & FMODE_CAN_WRITE))
 			goto close_fail;
-		if (do_truncate(cprm.file->f_path.dentry, 0, 0, cprm.file))
+		if (do_truncate2(cprm.file->f_path.mnt, cprm.file->f_path.dentry, 0, 0, cprm.file))
 			goto close_fail;
 	}
 
@@ -782,7 +823,25 @@ fail:
  * do on a core-file: use only these functions to write out all the
  * necessary info.
  */
-int dump_emit(struct coredump_params *cprm, const void *addr, int nr)
+int dump_init(struct coredump_params *cprm)
+{
+	if (dump_compressed(cprm))
+		return gz_init(cprm);
+
+	return 1;
+}
+EXPORT_SYMBOL(dump_init);
+
+int dump_finish(struct coredump_params *cprm)
+{
+	if (dump_compressed(cprm))
+		return gz_finish(cprm);
+
+	return 1;
+}
+EXPORT_SYMBOL(dump_finish);
+
+int __dump_emit(struct coredump_params *cprm, const void *addr, int nr)
 {
 	struct file *file = cprm->file;
 	loff_t pos = file->f_pos;
@@ -802,13 +861,21 @@ int dump_emit(struct coredump_params *cprm, const void *addr, int nr)
 	}
 	return 1;
 }
+
+int dump_emit(struct coredump_params *cprm, const void *addr, int nr)
+{
+	if (dump_compressed(cprm))
+		return gz_dump_write(cprm, addr, nr);
+	return __dump_emit(cprm, addr, nr);
+}
 EXPORT_SYMBOL(dump_emit);
 
 int dump_skip(struct coredump_params *cprm, size_t nr)
 {
 	static char zeroes[PAGE_SIZE];
 	struct file *file = cprm->file;
-	if (file->f_op->llseek && file->f_op->llseek != no_llseek) {
+	if (!dump_compressed(cprm) && file->f_op->llseek
+			&& file->f_op->llseek != no_llseek) {
 		if (dump_interrupted() ||
 		    file->f_op->llseek(file, nr, SEEK_CUR) < 0)
 			return 0;
@@ -828,6 +895,10 @@ EXPORT_SYMBOL(dump_skip);
 int dump_align(struct coredump_params *cprm, int align)
 {
 	unsigned mod = cprm->pos & (align - 1);
+#ifdef CONFIG_COREDUMP_GZ
+	if (dump_compressed(cprm))
+		mod = cprm->zstr.total_in & (align - 1);
+#endif
 	if (align & (align - 1))
 		return 0;
 	return mod ? dump_skip(cprm, align - mod) : 1;

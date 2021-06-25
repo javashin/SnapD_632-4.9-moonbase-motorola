@@ -48,6 +48,7 @@ struct snd_usb_audio {
 	int num_interfaces;
 	int num_suspended_intf;
 	int sample_rate_read_error;
+	unsigned int capture_rate_max;
 
 	struct list_head pcm_list;	/* list of pcm streams */
 	struct list_head ep_list;	/* list of audio-related endpoints */
@@ -61,6 +62,10 @@ struct snd_usb_audio {
 	bool autoclock;			/* from the 'autoclock' module param */
 
 	struct usb_host_interface *ctrl_intf;	/* the audio control interface */
+
+	struct mutex dev_lock;	/* to protect any race with disconnect */
+	int card_num;	/* cache pcm card number to use upon disconnect */
+	void (*disconnect_cb)(struct snd_usb_audio *chip);
 };
 
 #define usb_audio_err(chip, fmt, args...) \

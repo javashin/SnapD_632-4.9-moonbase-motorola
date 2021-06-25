@@ -1,0 +1,81 @@
+/*
+ * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "sdm632-channel-common-overlay.dtsi"
+
+#define CHANNEL_RADIO_NA 3
+#define CHANNEL_RADIO_TMO 4
+
+&i2c_1 {
+		tps61280@75 {
+			compatible = "ti,tps61280";
+			status = "okay";
+			reg = <0x75>;
+			ti,config = <0x0D>;
+			ti,vout-floor = <0x0D>;
+			ti,vout-roof = <0x19>;/*0x19*/
+			ti,ilim = <0x0F>;
+			ti,en-gpio = <&tlmm 113 0>;
+			/*ti,vsel-gpio = <&tlmm 104 0>;*/
+			pinctrl-names = "default";
+			pinctrl-0 = <&tps61280_en_default>;
+
+		};
+};
+
+&i2c_2 { /* capsensor */
+
+	sx9310@28 {
+		compatible = "sx9325";
+		reg = <0x28>;
+		cap_vdd-supply = <&pm8953_l5>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <86 0x2008>;
+		gpios = <&tlmm 86 0x2008>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&sx9310_irq_default>;
+		cap,use_channel = <0x0e>;
+		cap,use_channel_top = <0x03>;
+		cap,use_channel_bottom = <0x01>;
+		cap,raw_data_channel = <0x01>;
+		cap,scan_period = <0x02>;
+		reg_array_len = <25>;
+	reg_array_val = <0x05 0x74 0x10 0x07 0x20 0x60 0x24 0xb7 0x26 0x00 0x27 0xaf 0x28 0x3f 0x29 0x06 0x2a 0x31 0x2b 0x12 0x2d 0x0f 0x30 0x13 0x31 0x13 0x32 0x3f 0x33 0x2d 0x34 0x0a 0x35 0x14 0x36 0x18 0x37 0x15 0x43 0x1b 0x44 0x01 0x4a 0x11 0x42 0x1c 0x4b 0x00 0x4c 0x00>;
+		/delete-property/ cap_svdd-supply;
+	};
+};
+
+&audio_tas2560 {
+	status = "ok";
+};
+
+&soc {
+	cdc_quin_mi2s_gpios: msm_cdc_pinctrl_quin {
+		compatible = "qcom,msm-cdc-pinctrl";
+		pinctrl-names = "aud_active", "aud_sleep";
+		pinctrl-0 = <&quin_mi2s_act &pri_tlmm_ws_act>;
+		pinctrl-1 = <&quin_mi2s_sus &pri_tlmm_ws_sus>;
+	};
+
+	sound {
+		qcom,model = "msm8953_snd_card-tas2560";
+		qcom,msm-ext-pa = "quinary";
+		ti,have-tas2560;
+	};
+
+	tas_smartamp: ti,tas2560-algo {
+		compatible = "ti,tas2560-algo";
+		ti,spk_type_id = <1>;/*ID for tas2560_TI_na.bin*/
+		ti,tas2560-port-id = <0x1016>, <0x1017>; /*<RX_PORT_ID>, <TX_PORT_ID>*/
+	};
+};

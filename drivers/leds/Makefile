@@ -59,8 +59,11 @@ obj-$(CONFIG_LEDS_NETXBIG)		+= leds-netxbig.o
 obj-$(CONFIG_LEDS_ASIC3)		+= leds-asic3.o
 obj-$(CONFIG_LEDS_MAX77693)		+= leds-max77693.o
 obj-$(CONFIG_LEDS_MAX8997)		+= leds-max8997.o
+obj-$(CONFIG_LEDS_SM5350)		+= leds-sm5350.o
+obj-$(CONFIG_LEDS_KTD3136)		+= leds-ktd3136.o
 obj-$(CONFIG_LEDS_LM355x)		+= leds-lm355x.o
 obj-$(CONFIG_LEDS_BLINKM)		+= leds-blinkm.o
+obj-$(CONFIG_LEDS_QTI_TRI_LED)		+= leds-qti-tri-led.o
 obj-$(CONFIG_LEDS_SYSCON)		+= leds-syscon.o
 obj-$(CONFIG_LEDS_VERSATILE)		+= leds-versatile.o
 obj-$(CONFIG_LEDS_MENF21BMC)		+= leds-menf21bmc.o
@@ -71,6 +74,14 @@ obj-$(CONFIG_LEDS_IS31FL319X)		+= leds-is31fl319x.o
 obj-$(CONFIG_LEDS_IS31FL32XX)		+= leds-is31fl32xx.o
 obj-$(CONFIG_LEDS_PM8058)		+= leds-pm8058.o
 obj-$(CONFIG_LEDS_MLXCPLD)		+= leds-mlxcpld.o
+obj-$(CONFIG_LEDS_QPNP)			+= leds-qpnp.o
+obj-$(CONFIG_LEDS_QPNP_FLASH)		+= leds-qpnp-flash.o leds-qpnp-flash-common.o
+obj-$(CONFIG_LEDS_QPNP_FLASH_V2)	+= leds-qpnp-flash-v2.o leds-qpnp-flash-common.o
+obj-$(CONFIG_LEDS_QPNP_WLED)		+= leds-qpnp-wled.o
+obj-$(CONFIG_LEDS_QPNP_HAPTICS)	+= leds-qpnp-haptics.o
+obj-$(CONFIG_LEDS_QPNP_VIBRATOR_LDO)	+= leds-qpnp-vibrator-ldo.o
+obj-$(CONFIG_LEDS_QPNP_VIBRATOR) 	+= leds-qpnp-vibrator.o
+obj-$(CONFIG_LEDS_ATC)			+= leds-atc.o
 
 # LED SPI Drivers
 obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o

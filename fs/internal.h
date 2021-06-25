@@ -50,6 +50,12 @@ extern int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 extern void __init chrdev_init(void);
 
 /*
+ * coredump.c
+ */
+struct coredump_params;
+extern int __dump_emit(struct coredump_params *cprm, const void *addr, int nr);
+
+/*
  * namei.c
  */
 extern int user_path_mountpoint_at(int, const char __user *, unsigned int, struct path *);
@@ -88,9 +94,11 @@ extern struct file *get_empty_filp(void);
  * super.c
  */
 extern int do_remount_sb(struct super_block *, int, void *, int);
+extern int do_remount_sb2(struct vfsmount *, struct super_block *, int,
+								void *, int);
 extern bool trylock_super(struct super_block *sb);
 extern struct dentry *mount_fs(struct file_system_type *,
-			       int, const char *, void *);
+			       int, const char *, struct vfsmount *, void *);
 extern struct super_block *user_get_super(dev_t);
 
 /*

@@ -614,7 +614,7 @@ static int probes_seq_show(struct seq_file *m, void *v)
 
 	/* Don't print "0x  (null)" when offset is 0 */
 	if (tu->offset) {
-		seq_printf(m, "0x%p", (void *)tu->offset);
+		seq_printf(m, "0x%px", (void *)tu->offset);
 	} else {
 		switch (sizeof(void *)) {
 		case 4:
@@ -830,7 +830,7 @@ static void __uprobe_trace_func(struct trace_uprobe *tu,
 
 	memcpy(data, ucb->buf, tu->tp.size + dsize);
 
-	event_trigger_unlock_commit(trace_file, buffer, event, entry, 0, 0);
+	event_trigger_unlock_commit(trace_file, buffer, event, entry, 0, 0, 0);
 }
 
 /* uprobe handler */

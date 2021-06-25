@@ -1,0 +1,63 @@
+/* Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+qcom,ke40-atl {
+	serialnum = "SB18C43804";
+	qcom,max-voltage-uv = <4400000>;
+	qcom,fg-cc-cv-threshold-mv = <4390>;
+	qcom,nom-batt-capacity-mah = <3000>;
+	qcom,chg-term-ua = <100000>;
+	qcom,batt-id-kohm = <100>;
+	qcom,battery-beta = <3440>;
+	qcom,battery-type = "KE40_ATL_2820mAh_4v4";
+	qcom,thermal-coefficients = [DA 86 F0 50 08 3C];
+	qcom,chg-rslow-comp-c1 = <2269400>;
+	qcom,chg-rslow-comp-c2 = <2084707>;
+	qcom,chg-rs-to-rslow = <687220>;
+	qcom,chg-rslow-comp-thr = <0x99>;
+	qcom,checksum = <0x8442>;
+	qcom,gui-version = "PMI8950GUI - 2.0.0.16";
+	qcom,fg-profile-data = [
+		 E9 83 D6 7C
+		 DA 80 65 76
+		 3C 83 7D 73
+		 3B 84 CE 80
+		 06 82 43 9B
+		 D8 BE 69 D0
+		 79 10 01 88
+		 83 7D 64 81
+		 A2 77 2B 83
+		 8B 7A 8C 8C
+		 DA 88 18 82
+		 84 A0 C7 C5
+		 1D D9 6A 0C
+		 CB 0B 19 60
+		 14 70 29 FC
+		 11 3D 3E 3D
+		 DD 30 00 00
+		 49 3D 44 41
+		 7A 44 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 25 6A 0C 69
+		 1B 5C 2F 82
+		 C7 6D 88 59
+		 73 7B 9B 89
+		 D3 65 7F 5C
+		 D1 51 6E A3
+		 1A 22 62 52
+		 64 A0 71 0C
+		 28 00 FF 36
+		 F0 11 30 03
+		 00 00 00 0C
+	];
+};

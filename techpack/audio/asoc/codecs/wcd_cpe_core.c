@@ -2250,7 +2250,8 @@ static int fill_cmi_header(struct cmi_hdr *hdr,
 			   u16 opcode, bool obm_flag)
 {
 	/* sanitize the data */
-	if (!IS_VALID_SESSION_ID(session_id) ||
+	if (hdr == NULL ||
+	    !IS_VALID_SESSION_ID(session_id) ||
 	    !IS_VALID_SERVICE_ID(service_id) ||
 	    !IS_VALID_PLD_SIZE(payload_size)) {
 		pr_err("Invalid header creation request\n");
@@ -2904,6 +2905,8 @@ static int wcd_cpe_send_param_snd_model(struct wcd_cpe_core *core,
 	struct cmi_obm_msg obm_msg;
 	struct cpe_param_data *param_d;
 
+	obm_msg.hdr.hdr_info = 0;
+	obm_msg.hdr.pld_info = 0;
 
 	ret = fill_cmi_header(&obm_msg.hdr, session->id,
 			CMI_CPE_LSM_SERVICE_ID, 0, 20,
@@ -3555,6 +3558,7 @@ static int wcd_cpe_lsm_lab_control(
 		 __func__, pld_size, enable);
 
 	memset(&cpe_lab_enable, 0, sizeof(cpe_lab_enable));
+	memset(&cpe_lab_enable.hdr, 0, sizeof(cpe_lab_enable.hdr));
 
 	if (fill_lsm_cmd_header_v0_inband(&cpe_lab_enable.hdr, session->id,
 		(u8) pld_size, CPE_LSM_SESSION_CMD_SET_PARAMS_V2)) {
@@ -3605,6 +3609,7 @@ static int wcd_cpe_lsm_eob(
 	int ret = 0;
 	struct cmi_hdr lab_eob;
 
+	memset(&lab_eob, 0, sizeof(lab_eob));
 	if (fill_lsm_cmd_header_v0_inband(&lab_eob, session->id,
 		0, CPE_LSM_SESSION_CMD_EOB)) {
 		return -EINVAL;

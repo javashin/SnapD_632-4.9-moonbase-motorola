@@ -1119,6 +1119,13 @@ limCleanupMlm(tpAniSirGlobal pMac)
         tx_timer_delete(&pMac->lim.limTimers.gLimFTPreAuthRspTimer);
 #endif
 
+#ifdef WLAN_FEATURE_LFR_MBB
+        tx_timer_deactivate(&pMac->lim.limTimers.glim_pre_auth_mbb_rsp_timer);
+        tx_timer_delete(&pMac->lim.limTimers.glim_pre_auth_mbb_rsp_timer);
+
+        tx_timer_deactivate(&pMac->lim.limTimers.glim_reassoc_mbb_rsp_timer);
+        tx_timer_delete(&pMac->lim.limTimers.glim_reassoc_mbb_rsp_timer);
+#endif
 
 #if defined(FEATURE_WLAN_ESE) && !defined(FEATURE_WLAN_ESE_UPLOAD)
         // Deactivate and delete TSM
@@ -4842,8 +4849,8 @@ tSirRetStatus
 limEnableHT20Protection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-    if(!psessionEntry->htCapability)
-        return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability){
+        return eSIR_SUCCESS;} // this protection  is only for HT stations.
 
         //overlapping protection configuration check.
         if(overlap)
@@ -5052,8 +5059,8 @@ tSirRetStatus
 limEnableHTNonGfProtection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-    if(!psessionEntry->htCapability)
-        return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability){
+        return eSIR_SUCCESS;} // this protection  is only for HT stations.
 
         //overlapping protection configuration check.
         if(overlap)
@@ -5123,8 +5130,8 @@ tSirRetStatus
 limEnableHTLsigTxopProtection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-    if(!psessionEntry->htCapability)
-        return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability){
+        return eSIR_SUCCESS;} // this protection  is only for HT stations.
 
         //overlapping protection configuration check.
         if(overlap)
@@ -5196,8 +5203,8 @@ tSirRetStatus
 limEnableHtRifsProtection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-    if(!psessionEntry->htCapability)
-        return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability){
+        return eSIR_SUCCESS;} // this protection  is only for HT stations.
 
 
         //overlapping protection configuration check.
@@ -7025,8 +7032,13 @@ limRestorePreChannelSwitchState(tpAniSirGlobal pMac, tpPESession psessionEntry)
     /* Channel switch should be ready for the next time */
     psessionEntry->gLimSpecMgmt.dot11hChanSwState = eLIM_11H_CHANSW_INIT;
 
-    /* Restore the frame transmission, all the time. */
-    limFrameTransmissionControl(pMac, eLIM_TX_ALL, eLIM_RESUME_TX);
+    /* Restore the frame transmission, if switched channel is NON-DFS.
+     * Else tx should be resumed after receiving first beacon on DFS channel
+     */
+    if(!limIsconnectedOnDFSChannel(psessionEntry->currentOperChannel))
+        limFrameTransmissionControl(pMac, eLIM_TX_ALL, eLIM_RESUME_TX);
+    else
+        psessionEntry->gLimSpecMgmt.dfs_channel_csa = true;
 
     /* Free to enter BMPS */
     limSendSmePostChannelSwitchInd(pMac);
@@ -7189,6 +7201,19 @@ limPrepareFor11hChannelSwitch(tpAniSirGlobal pMac, tpPESession psessionEntry)
     else
     {
         PELOGE(limLog(pMac, LOGE, FL("Not in scan state, start channel switch timer"));)
+
+        /* Stop roam scan during CAC period in DFS channels */
+        if(limIsconnectedOnDFSChannel(
+                            psessionEntry->gLimChannelSwitch.primaryChannel)) {
+#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
+            if (pMac->roam.configParam.isRoamOffloadScanEnabled) {
+               csrRoamOffloadScan(pMac, ROAM_SCAN_OFFLOAD_STOP,
+                                  REASON_DISCONNECTED);
+            }
+#endif
+        psessionEntry->gLimSpecMgmt.dfs_channel_csa = true;
+        }
+
         /** We are safe to switch channel at this point */
         limStopTxAndSwitchChannel(pMac, psessionEntry->peSessionId);
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017, 2020 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -445,7 +445,7 @@ limCheckRxRSNIeMatch(tpAniSirGlobal pMac, tDot11fIERSN rxRSNIe,tpPESession pSess
                      tANI_U8 staIsHT, tANI_BOOLEAN *pmfConnection)
 {
     tDot11fIERSN    *pRSNIe;
-    tANI_U8         i, j, match, onlyNonHtCipher = 1;
+    tANI_U8         i, j, match = 0, onlyNonHtCipher = 1;
 #ifdef WLAN_FEATURE_11W
     tANI_BOOLEAN weArePMFCapable;
     tANI_BOOLEAN weRequirePMF;
@@ -456,6 +456,26 @@ limCheckRxRSNIeMatch(tpAniSirGlobal pMac, tDot11fIERSN rxRSNIe,tpPESession pSess
 
     //RSN IE should be received from PE
     pRSNIe = &pSessionEntry->gStartBssRSNIe;
+
+    /* We should have only one AKM in assoc/reassoc request */
+    if (rxRSNIe.akm_suite_cnt != 1) {
+        limLog(pMac, LOG3, FL("Invalid RX akm_suite_cnt %d"),
+                rxRSNIe.akm_suite_cnt);
+        return eSIR_MAC_INVALID_AKMP_STATUS;
+    }
+    /* Check if we support the received AKM */
+    for (i = 0; i < pRSNIe->akm_suite_cnt; i++) {
+        if (vos_mem_compare(&rxRSNIe.akm_suite[0],
+                            &pRSNIe->akm_suite[i],
+                            sizeof(pRSNIe->akm_suite[i]))) {
+            match = 1;
+            break;
+        }
+    }
+    if (!match) {
+        limLog(pMac, LOG3, FL("Invalid RX akm_suite"));
+        return eSIR_MAC_INVALID_AKMP_STATUS;
+    }
 
     // Check groupwise cipher suite
     for (i = 0; i < sizeof(rxRSNIe.gp_cipher_suite); i++)
@@ -571,10 +591,30 @@ tANI_U8
 limCheckRxWPAIeMatch(tpAniSirGlobal pMac, tDot11fIEWPA rxWPAIe,tpPESession pSessionEntry, tANI_U8 staIsHT)
 {
     tDot11fIEWPA    *pWPAIe;
-    tANI_U8         i, j, match, onlyNonHtCipher = 1;
+    tANI_U8         i, j, match = 0, onlyNonHtCipher = 1;
 
     // WPA IE should be received from PE
     pWPAIe = &pSessionEntry->gStartBssWPAIe;
+
+    /* We should have only one AKM in assoc/reassoc request */
+    if (rxWPAIe.auth_suite_count != 1) {
+        limLog(pMac, LOG1, FL("Invalid RX auth_suite_count %d"),
+                rxWPAIe.auth_suite_count);
+        return eSIR_MAC_INVALID_AKMP_STATUS;
+    }
+    /* Check if we support the received AKM */
+    for (i = 0; i < pWPAIe->auth_suite_count; i++) {
+        if (vos_mem_compare(&rxWPAIe.auth_suites[0],
+                            &pWPAIe->auth_suites[i],
+                            sizeof(pWPAIe->auth_suites[i]))) {
+            match = 1;
+            break;
+        }
+    }
+    if (!match) {
+        limLog(pMac, LOG1, FL("Invalid RX auth_suites"));
+        return eSIR_MAC_INVALID_AKMP_STATUS;
+    }
 
     // Check groupwise cipher suite
     for (i = 0; i < 4; i++)
@@ -3005,7 +3045,8 @@ limAddStaSelf(tpAniSirGlobal pMac,tANI_U16 staIdx, tANI_U8 updateSta, tpPESessio
         {
             pAddStaParams->greenFieldCapable = limGetHTCapability( pMac, eHT_GREENFIELD, psessionEntry);
             pAddStaParams->txChannelWidthSet =
-                  pMac->roam.configParam.channelBondingMode5GHz;
+                  pMac->roam.configParam.channelBondingMode5GHz ^
+                  pMac->roam.configParam.channelBondingMode24GHz;
             // pAddStaParams->txChannelWidthSet = limGetHTCapability( pMac, eHT_SUPPORTED_CHANNEL_WIDTH_SET, psessionEntry);
             pAddStaParams->mimoPS             = limGetHTCapability( pMac, eHT_MIMO_POWER_SAVE, psessionEntry );
             pAddStaParams->rifsMode           = limGetHTCapability( pMac, eHT_RIFS_MODE, psessionEntry );
@@ -4113,7 +4154,7 @@ tSirRetStatus limStaSendAddBssPreAssoc( tpAniSirGlobal pMac, tANI_U8 updateEntry
         retCode = eSIR_MEM_ALLOC_FAILED;
         goto returnFailure;
     }
-    
+
     vos_mem_set((tANI_U8 *) pAddBssParams, sizeof( tAddBssParams ), 0);
 
 
@@ -4122,8 +4163,8 @@ tSirRetStatus limStaSendAddBssPreAssoc( tpAniSirGlobal pMac, tANI_U8 updateEntry
                             GET_IE_LEN_IN_BSS(bssDescription->length),
                             pBeaconStruct );
 
-    if(pMac->lim.gLimProtectionControl != WNI_CFG_FORCE_POLICY_PROTECTION_DISABLE)
-        limDecideStaProtectionOnAssoc(pMac, pBeaconStruct, psessionEntry);
+    if(pMac->lim.gLimProtectionControl != WNI_CFG_FORCE_POLICY_PROTECTION_DISABLE){
+        limDecideStaProtectionOnAssoc(pMac, pBeaconStruct, psessionEntry);}
         vos_mem_copy(pAddBssParams->bssId, bssDescription->bssId,
                      sizeof(tSirMacAddr));
 
@@ -4145,7 +4186,7 @@ tSirRetStatus limStaSendAddBssPreAssoc( tpAniSirGlobal pMac, tANI_U8 updateEntry
     pAddBssParams->operMode = BSS_OPERATIONAL_MODE_STA;
 
     pAddBssParams->beaconInterval = bssDescription->beaconInterval;
-    
+
     pAddBssParams->dtimPeriod = pBeaconStruct->tim.dtimPeriod;
     pAddBssParams->updateBss = updateEntry;
 
@@ -4161,7 +4202,7 @@ tSirRetStatus limStaSendAddBssPreAssoc( tpAniSirGlobal pMac, tANI_U8 updateEntry
                  pBeaconStruct->supportedRates.rate, pBeaconStruct->supportedRates.numRates);
 
     pAddBssParams->nwType = bssDescription->nwType;
-    
+
     pAddBssParams->shortSlotTimeSupported = (tANI_U8)pBeaconStruct->capabilityInfo.shortSlotTime; 
     pAddBssParams->llaCoexist = (tANI_U8) psessionEntry->beaconParams.llaCoexist;
     pAddBssParams->llbCoexist = (tANI_U8) psessionEntry->beaconParams.llbCoexist;

@@ -707,15 +707,15 @@ rrmFillBeaconIes( tpAniSirGlobal pMac,
    while ( BcnNumIes >= 2 )
    {
       len = *(pBcnIes + 1); //element id + length.
-	  len += 2;
+      len += 2;
       limLog( pMac, LOG3, "EID = %d, len = %d total = %d",
              *pBcnIes, *(pBcnIes+1), len );
 
-    if (BcnNumIes < len || len <= 2) {
-	    limLog(pMac, LOGE, "RRM: Invalid IE len:%d exp_len:%d",
-		        len, BcnNumIes);
-		break;
-	}
+      if (BcnNumIes < len || len <= 2) {
+          limLog(pMac, LOGE, "RRM: Invalid IE len:%d exp_len:%d",
+                 len, BcnNumIes);
+          break;
+      }
 
       i = 0;
       do

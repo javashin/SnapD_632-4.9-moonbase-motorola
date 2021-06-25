@@ -8928,6 +8928,7 @@ WLANTL_STARxConn
    v_PVOID_t                aucBDHeader;
    v_U8_t                   ucTid;
    WLANTL_RxMetaInfoType    wRxMetaInfo;
+   v_U8_t                   ucAsf; /* AMSDU sub frame */
   /*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -*/
 
   /*------------------------------------------------------------------------
@@ -8978,6 +8979,7 @@ WLANTL_STARxConn
   usMPDULen     = (v_U16_t)WDA_GET_RX_MPDU_LEN(aucBDHeader);
   ucMPDUHLen    = (v_U8_t)WDA_GET_RX_MPDU_HEADER_LEN(aucBDHeader);
   ucTid         = (v_U8_t)WDA_GET_RX_TID(aucBDHeader);
+  ucAsf         = (v_U8_t)WDA_GET_RX_ASF(aucBDHeader);
 
   vos_pkt_get_packet_length( vosDataBuff, &usPktLen);
 
@@ -8992,6 +8994,14 @@ WLANTL_STARxConn
                "WLAN TL:BD header corrupted - dropping packet"));
     /* Drop packet */
     vos_pkt_return_packet(vosDataBuff);
+    return VOS_STATUS_SUCCESS;
+  }
+
+  if (ucAsf) {
+    vos_pkt_return_packet(vosDataBuff);
+    *pvosDataBuff = NULL;
+    VOS_TRACE(VOS_MODULE_ID_TL, VOS_TRACE_LEVEL_ERROR,
+              "WLAN TL: AMSDU frames are not allowed while authentication - dropping");
     return VOS_STATUS_SUCCESS;
   }
 
@@ -11874,8 +11884,8 @@ WLAN_TLAPGetNextTxIds
 
   ++ucNextSTA;
 
-  if ( WLAN_MAX_STA_COUNT <= ucNextSTA )
-    ucNextSTA = 0;
+  if ( WLAN_MAX_STA_COUNT <= ucNextSTA ){
+    ucNextSTA = 0;}
 
     isServed = FALSE;
     if ( 0 == pTLCb->ucCurLeftWeight )
@@ -11886,13 +11896,13 @@ WLAN_TLAPGetNextTxIds
         //end of current VO, VI, BE, BK loop. Reset priority.
         pTLCb->uCurServedAC = WLANTL_AC_HIGH_PRIO;
       }
-      else 
+      else
       {
         pTLCb->uCurServedAC --;
       }
 
       pTLCb->ucCurLeftWeight =  pTLCb->tlConfigInfo.ucAcWeights[pTLCb->uCurServedAC];
- 
+
     } // (0 == pTLCb->ucCurLeftWeight)
 
   ucTempSTA = ucNextSTA;
